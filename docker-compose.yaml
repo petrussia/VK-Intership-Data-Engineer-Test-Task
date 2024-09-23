@@ -1,0 +1,45 @@
+version: '3'
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  webserver:
+    image: apache/airflow:2.1.2
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    volumes:
+      - ./dags:/opt/airflow/dags
+    command: webserver
+    ports:
+      - "8080:8080"
+
+  scheduler:
+    image: apache/airflow:2.1.2
+    depends_on:
+      - webserver
+    environment:
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    volumes:
+      - ./dags:/opt/airflow/dags
+    command: scheduler
+
+  spark:
+    image: bitnami/spark:3.3.1
+    environment:
+      - SPARK_MODE=master
+    volumes:
+      - ./input:/opt/spark/input
+      - ./output:/opt/spark/output
+  
+volumes:
+  postgres_data:
