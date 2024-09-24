@@ -58,15 +58,13 @@ def aggregate_actions(df):
         print("Нет данных для обработки.")
         return pd.DataFrame(columns=['email', 'create_count', 'read_count', 'update_count', 'delete_count'])
 
-    # Группировка по email и action с подсчетом количества
     action_counts = df.groupby(['email', 'action']).size().unstack(fill_value=0).reset_index()
     action_counts.columns = ['email'] + [f"{action.lower()}_count" for action in action_counts.columns if action != 'email']
 
-    # Убедимся, что все действия присутствуют в колонках
     for action in ['create_count', 'read_count', 'update_count', 'delete_count']:
         if action not in action_counts.columns:
             action_counts[action] = 0
-
+    print(action_counts)
     return action_counts
 
 

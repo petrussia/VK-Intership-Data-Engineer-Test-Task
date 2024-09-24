@@ -9,37 +9,73 @@ services:
       POSTGRES_DB: airflow
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      retries: 5
 
-  webserver:
-    image: apache/airflow:2.1.2
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass airflow
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 10
+
+  airflow-webserver:
+    build: .
+    image: apache/airflow:2.7.1
     depends_on:
       - postgres
+      - redis
     environment:
-      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
-      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: yEnBWfr9Q3EpcQcoAx32hckE3HwfbfzZ_mxdaHTJQI4=
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: 'postgresql+psycopg2://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__CELERY__BROKER_URL: 'redis://:airflow@redis:6379/0'
+      AIRFLOW__CELERY__RESULT_BACKEND: 'db+postgresql://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'True'
     volumes:
       - ./dags:/opt/airflow/dags
-    command: webserver
+      - ./scripts:/opt/airflow/scripts
+      - ./requirements.txt:/requirements.txt
     ports:
       - "8080:8080"
+    command: >
+      sh -c "
+      airflow db init &&
+      airflow users create --username --firstname admin --lastname --role --email petrthefirst24@gmail.com &&
+      airflow celery worker --detach &&
+      airflow webserver
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
 
-  scheduler:
-    image: apache/airflow:2.1.2
+  airflow-scheduler:
+    build: .
+    image: apache/airflow:2.7.1
     depends_on:
-      - webserver
+      - airflow-webserver
     environment:
-      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: yEnBWfr9Q3EpcQcoAx32hckE3HwfbfzZ_mxdaHTJQI4=
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: 'postgresql+psycopg2://airflow:airflow@postgres:5432/airflow'
+      AIRFLOW__CELERY__BROKER_URL: 'redis://:airflow@redis:6379/0'
+      AIRFLOW__CELERY__RESULT_BACKEND: 'db+postgresql://airflow:airflow@postgres:5432/airflow'
     volumes:
       - ./dags:/opt/airflow/dags
-    command: scheduler
+      - ./scripts:/opt/airflow/scripts
+      - ./requirements.txt:/requirements.txt
+    command: >
+      sh -c "
+      sleep 20 &&
+      airflow scheduler
+      "
 
-  spark:
-    image: bitnami/spark:3.3.1
-    environment:
-      - SPARK_MODE=master
-    volumes:
-      - ./input:/opt/spark/input
-      - ./output:/opt/spark/output
-  
 volumes:
   postgres_data:
